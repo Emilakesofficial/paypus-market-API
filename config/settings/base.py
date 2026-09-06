@@ -92,6 +92,7 @@ DATABASES = {
         "PORT":os.getenv("DB_PORT", default="5432"),
     }
 }
+REDIS_URL = os.getenv("REDIS_URL", default="redis://localhost:6379/0")
 
 CACHES = {
     "default": {
@@ -159,6 +160,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    "DEFAULT_THROTTLE_RATES": {
+        "forget_password": "5/minute",
+    },
 }
 
 SIMPLE_JWT = {
