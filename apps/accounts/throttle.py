@@ -1,4 +1,4 @@
-from rest_framework.throttling import AnnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle
 
-class ForgetPasswordThrottle(AnnonRateThrottle):
-    scope = "forget_password"
+class ForgotPasswordThrottle(AnonRateThrottle):
+    scope = "forgot_password"

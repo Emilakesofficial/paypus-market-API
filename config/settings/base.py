@@ -161,7 +161,7 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ),
     "DEFAULT_THROTTLE_RATES": {
-        "forget_password": "5/minute",
+        "forgot_password": "5/minute",
     },
 }
 

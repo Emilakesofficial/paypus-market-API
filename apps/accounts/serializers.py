@@ -46,4 +46,4 @@ class ResetPasswordSerializer(serializers.Serializer):
         return attrs
     
 class LogoutSerializer(serializers.Serializer):
-    refresh = serializers.CharField()
+    refresh_token = serializers.CharField()

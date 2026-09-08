@@ -79,7 +79,7 @@ class ResetPasswordView(APIView):
         if not user:
             return Response({"detail": "Invalid request."}, status=status.HTTP_400_BAD_REQUEST)
 
-        user.set_password(new_password)
+        user.set_password(new_password) # hash the password before saving
         user.save()
         cache.delete(otp_cache_key(email))
         cache.delete(attempts_cache_key(email))
@@ -90,8 +90,9 @@ class LogoutView(APIView):
         serializer = LogoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            token = RefreshToken(serializer.validated_data["refresh"])
+            token = RefreshToken(serializer.validated_data["refresh_token"])
             token.blacklist()
         except TokenError:
             return Response({"detail": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
+        
         return Response(status=status.HTTP_205_RESET_CONTENT)
