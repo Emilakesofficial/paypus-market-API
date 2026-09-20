@@ -5,4 +5,6 @@ from apps.catalog.views import ProductViewSet
 router = DefaultRouter()
 router.register("products", ProductViewSet, basename="product")
 
+
 urlpatterns = router.urls
+

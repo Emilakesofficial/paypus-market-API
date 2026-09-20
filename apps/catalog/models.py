@@ -16,6 +16,7 @@ class Product(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     stock_quantity = models.PositiveIntegerField(default=0)
     sku = models.CharField(max_length=64, unique=True)
+    currency = models.CharField(max_length=3, default="NGN")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="active")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -23,7 +24,7 @@ class Product(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=models.Q(stock_quantity__gte=0), name="catalog_stock_non_negative"
+                check=models.Q(stock_quantity__gte=0), name="catalog_stock_non_negative" # check this stock_quantity__gte=0 constraint
             )
         ]
         ordering = ["-created_at"]
