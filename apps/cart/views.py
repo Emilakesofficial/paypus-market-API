@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.cart.models import Cart, CartItem
-from apps.cart.serializers import AddCartItemSerializer, CartSerializer
+from apps.cart.serializers import AddCartItemSerializer, CartSerializer, UpdateCartItemSerializer
 
 
 class CartView(APIView):
@@ -48,10 +48,12 @@ class CartItemDetailView(APIView):
 
     def patch(self, request, item_id):
         item = self.get_item(request, item_id)
-        quantity = request.data.get("quantity")
-        if quantity is None or int(quantity) < 1:
-            return Response({"quantity": "Must be a positive integer."}, status=status.HTTP_400_BAD_REQUEST)
-        if int(quantity) > item.product.stock_quantity:
+        
+        serializer = UpdateCartItemSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        quantity = serializer.validated_data["quantity"]
+        
+        if quantity > item.product.stock_quantity:
             return Response(
                 {"quantity": f"Only {item.product.stock_quantity} in stock."},
                 status=status.HTTP_400_BAD_REQUEST,

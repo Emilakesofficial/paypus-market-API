@@ -43,3 +43,6 @@ class AddCartItemSerializer(serializers.Serializer):
                 {"quantity": f"Only {self.product.stock_quantity} in stock."}
             )
         return attrs
+    
+class UpdateCartItemSerializer(serializers.Serializer):
+    quantity = serializers.IntegerField(min_value=1)

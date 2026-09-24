@@ -1,3 +1,6 @@
+from datetime import timedelta
+from django.utils import timezone
+
 from django.db import transaction
 from django.db.models import F
 
@@ -5,6 +8,7 @@ from .models import Product
 from .exceptions import EmptyCartError, InsufficientStockError
 from .models import Order, OrderItem
 
+expires_at = timezone.now() + timedelta(minutes=30)
 
 def reserve_stock(product_id, quantity):
     """
@@ -44,6 +48,7 @@ def create_order_from_cart(user, cart, idempotency_key):
         buyer=user,
         total_amount=total,
         idempotency_key=idempotency_key,
+        expires_at=expires_at,
     )
     OrderItem.objects.bulk_create([
         OrderItem(order=order, product=product, quantity=quantity, unit_price=unit_price)
