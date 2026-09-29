@@ -24,6 +24,7 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
     
+    
 class ForgotPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = [ForgotPasswordThrottle]
