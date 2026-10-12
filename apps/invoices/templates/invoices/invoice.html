@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 2cm; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 11pt; color: #222; }
+  h1 { font-size: 22pt; margin: 0; }
+  .meta { margin: 8px 0 24px; color: #555; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; border-bottom: 2px solid #222; padding: 6px 4px; }
+  td { border-bottom: 1px solid #ddd; padding: 6px 4px; }
+  .num { text-align: right; }
+  .total td { border-top: 2px solid #222; border-bottom: none; font-weight: bold; }
+</style>
+</head>
+<body>
+  <h1>Invoice</h1>
+  <div class="meta">
+    <div><strong>{{ invoice_number }}</strong></div>
+    <div>Date: {{ issued_on|date:"j M Y" }}</div>
+    <div>Order #{{ order.id }}</div>
+  </div>
+
+  <p><strong>Billed to</strong><br>{{ buyer_name }}<br>{{ order.buyer.email }}</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Item</th><th>Sold by</th>
+        <th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+      <tr>
+        <td>{{ line.name }}</td>
+        <td>{{ line.merchant }}</td>
+        <td class="num">{{ line.quantity }}</td>
+        <td class="num">{{ currency }} {{ line.unit_price|floatformat:2 }}</td>
+        <td class="num">{{ currency }} {{ line.line_total|floatformat:2 }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="total">
+        <td colspan="4">Total</td>
+        <td class="num">{{ currency }} {{ order.total_amount|floatformat:2 }}</td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>

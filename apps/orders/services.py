@@ -5,9 +5,19 @@ from django.db import transaction
 from django.db.models import F
 
 from .models import Product
-from .exceptions import EmptyCartError, InsufficientStockError
 from .models import Order, OrderItem
 
+from django.utils import timezone
+
+from apps.orders.exceptions import (
+    EmptyCartError,
+    InsufficientStockError,
+    NothingToShipError,
+    OrderNotFoundError,
+    OrderNotShippableError,
+    OrderNotConfirmableError
+)
+from apps.invoices.tasks import generate_invoice
 expires_at = timezone.now() + timedelta(minutes=30)
 
 def reserve_stock(product_id, quantity):
@@ -55,4 +65,55 @@ def create_order_from_cart(user, cart, idempotency_key):
         for product, quantity, unit_price in order_items_data
     ])
     cart.items.all().delete()
+    return order
+
+@transaction.atomic
+def ship_order_items(order_id, merchant):
+    # Lock the order row so two merchants shipping at the same moment are
+    # serialized. Without this, each could see the other's items as still
+    # unshipped, and neither would flip the order to "shipped".
+    order = Order.objects.select_for_update().filter(id=order_id).first()
+    merchant_items = OrderItem.objects.filter(order_id=order_id, product__merchant=merchant)
+
+    # Same 404 whether the order doesn't exist or it has none of this
+    # merchant's items, so existence isn't leaked to unrelated merchants.
+    if not order or not merchant_items.exists():
+        raise OrderNotFoundError()
+
+    if order.status != "paid":
+        raise OrderNotShippableError(order.status)
+
+    shipped_count = merchant_items.filter(shipped_at__isnull=True).update(
+        shipped_at=timezone.now()
+    )
+    if shipped_count == 0:
+        raise NothingToShipError()
+
+    # If every item in the order has now shipped, the order is shipped.
+    if not OrderItem.objects.filter(order_id=order_id, shipped_at__isnull=True).exists():
+        Order.objects.filter(id=order_id, status="paid").update(status="shipped")
+
+    order.refresh_from_db()
+    return order, shipped_count
+
+def confirm_delivery(order_id, buyer):
+    # Scoped to the buyer, so anyone else gets the same "not found"
+    # as a nonexistent order.
+    if not Order.objects.filter(id=order_id, buyer=buyer).exists():
+        raise OrderNotFoundError()
+
+    # Conditional update, same pattern as every other transition: only
+    # moves to completed if the order is currently shipped. A double-click
+    # or a repeated request updates zero rows instead of re-processing.
+    updated = Order.objects.filter(
+        id=order_id, buyer=buyer, status="shipped"
+    ).update(status="completed")
+
+    order = Order.objects.get(id=order_id)
+    if not updated:
+        raise OrderNotConfirmableError(order.status)
+    
+    # Queue only after the status change is committed, so the worker can't
+    # pick the task up before the order is visibly "completed".
+    transaction.on_commit(lambda: generate_invoice.delay(order_id))
     return order

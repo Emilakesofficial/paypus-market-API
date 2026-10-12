@@ -6,3 +6,21 @@ class InsufficientStockError(Exception):
 
 class EmptyCartError(Exception):
     pass
+
+class OrderNotFoundError(Exception):
+    pass
+
+
+class OrderNotShippableError(Exception):
+    def __init__(self, current_status):
+        self.current_status = current_status
+        super().__init__(f"Order cannot be shipped from status '{current_status}'")
+
+
+class NothingToShipError(Exception):
+    pass
+
+class OrderNotConfirmableError(Exception):
+    def __init__(self, current_status):
+        self.current_status = current_status
+        super().__init__(f"Order cannot be confirmed from status '{current_status}'")

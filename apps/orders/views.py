@@ -6,7 +6,15 @@ from ..cart.models import Cart
 from .exceptions import EmptyCartError, InsufficientStockError
 from .models import Order
 from .serializers import OrderSerializer
-from .services import create_order_from_cart
+from .services import create_order_from_cart, ship_order_items, confirm_delivery
+from apps.orders.exceptions import (
+    EmptyCartError,
+    InsufficientStockError,
+    NothingToShipError,
+    OrderNotFoundError,
+    OrderNotShippableError,
+    OrderNotConfirmableError
+)
 
 
 class CheckoutView(APIView):
@@ -41,4 +49,42 @@ class OrderDetailView(APIView):
         order = Order.objects.filter(id=order_id, buyer=request.user).first()
         if not order:
             return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(OrderSerializer(order).data)
+    
+class ShipOrderView(APIView):
+    def post(self, request, order_id):
+        try:
+            order, shipped_count = ship_order_items(order_id, request.user)
+        except OrderNotFoundError:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        except OrderNotShippableError as e:
+            return Response(
+                {"detail": f"Order cannot be shipped in its current status ({e.current_status})."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        except NothingToShipError:
+            return Response(
+                {"detail": "You have no unshipped items in this order."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # Deliberately a small response, not the full order: an order can
+        # contain other merchants' items, which this merchant shouldn't see.
+        return Response({
+            "order_id": order.id,
+            "order_status": order.status,
+            "items_shipped": shipped_count,
+        })
+        
+class ConfirmDeliveryView(APIView):
+    def post(self, request, order_id):
+        try:
+            order = confirm_delivery(order_id, request.user)
+        except OrderNotFoundError:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        except OrderNotConfirmableError as e:
+            return Response(
+                {"detail": f"Order cannot be confirmed in its current status ({e.current_status})."},
+                status=status.HTTP_409_CONFLICT,
+            )
         return Response(OrderSerializer(order).data)

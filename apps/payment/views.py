@@ -92,7 +92,7 @@ class PaystackWebhookView(APIView):
             return Response(status=status.HTTP_200_OK)
 
         with db_transaction.atomic():
-            payment.status = "paid"
+            payment.status = "success"
             payment.paid_at = timezone.now()
             payment.save(update_fields=["status", "paid_at"])
 
@@ -101,7 +101,7 @@ class PaystackWebhookView(APIView):
             # this becomes a safe no-op instead of double-processing.
             order = Order.objects.filter(
                 id=payment.order_id, status="pending_payment"
-            ).update(status="success")
+            ).updated(status="paid")
 
         return Response(status=status.HTTP_200_OK)
     
