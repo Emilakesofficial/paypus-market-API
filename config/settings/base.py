@@ -196,3 +196,17 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60.0,  # every minute
     },
 }
+
+# Development-only shortcut for Paystack's test bank (code 001). Off by
+# default, so production can never accept it unless someone deliberately
+# switches it on.
+PAYSTACK_TEST_BANK_ENABLED = False
+
+PAYSTACK_TEST_RECIPIENT_CODE = os.getenv("PAYSTACK_TEST_RECIPIENT_CODE", "")
+
+# Percentage of each merchant's sales kept by the platform.
+PLATFORM_COMMISSION_PERCENT = os.getenv("PLATFORM_COMMISSION_PERCENT", "10")
+
+# Development stand-in for Paystack's transfer endpoints. Off by default and
+# only ever switched on in dev.py, so it can never be active in production.
+PAYSTACK_FAKE_TRANSFERS = False

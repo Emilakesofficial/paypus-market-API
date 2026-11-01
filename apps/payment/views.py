@@ -4,16 +4,27 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 from django.conf import settings
-import hmac
-import hashlib
 
 from apps.orders.models import Order
-from apps.payment.models import Payment
+from apps.payment.models import Payment, PayoutAccount
 from django.db import transaction as db_transaction
 from django.utils import timezone
 
-from apps.payment.models import ProcessedWebhookEvent
-from apps.payment.service import verify_transaction, verify_webhook_signature, generate_reference, initialize_transaction
+from apps.payment.models import ProcessedWebhookEvent, PayoutAccount, Payout
+from apps.payment.service import (
+    verify_transaction, verify_webhook_signature, generate_reference, 
+    initialize_transaction, create_transfer_recipient, resolve_account,
+)
+from apps.payment.serializers import PayoutAccountInputSerializer, PayoutAccountSerializer
+from apps.payment.service import (
+    AccountVerificationError, ProviderRateLimitedError,
+    verify_and_register_account
+)
+from apps.payment.tasks import send_payout
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 class InitiatePaymentView(APIView):
     def post(self, request, order_id):
@@ -125,3 +136,63 @@ class PaystackCallbackView(APIView):
             "reference": reference,
             "status": verified["status"],
         })
+        
+class PayoutAccountView(APIView):
+    def get(self, request):
+        account = PayoutAccount.objects.filter(merchant=request.user).first()
+        if not account:
+            return Response({"detail": "No payout account set."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(PayoutAccountSerializer(account).data)
+
+    def put(self, request):
+        serializer = PayoutAccountInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        account_number = serializer.validated_data["account_number"]
+        bank_code = serializer.validated_data["bank_code"]
+
+        try:
+            account_name, recipient_code, bank_name = verify_and_register_account(
+                account_number, bank_code
+            )
+        except AccountVerificationError:
+            return Response(
+                {"detail": "We couldn't verify that account. Check the account number and bank."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ProviderRateLimitedError:
+            logger.warning("Paystack rate-limited the account lookup")
+            return Response(
+                {"detail": "Account verification is temporarily unavailable. Please try again later."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except requests.RequestException:
+            logger.exception("Paystack payout account setup failed")
+            return Response(
+                {"detail": "Couldn't reach the payment provider. Please try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        account, _ = PayoutAccount.objects.update_or_create(
+            merchant=request.user,
+            defaults={
+                "recipient_code": recipient_code,
+                "bank_name": bank_name,
+                "account_name": account_name,
+                "account_last4": account_number[-4:],
+            },
+        )
+        # Any payouts that were waiting for a destination can go out now.
+        # Queuing one twice is harmless: the task claims each payout
+        # atomically, so only one worker ever sends it.
+        waiting_ids = list(
+            Payout.objects.filter(merchant=request.user, status="pending")
+            .values_list("id", flat=True)
+        )
+        try:
+            for payout_id in waiting_ids:
+                send_payout.delay(payout_id)
+        except Exception:
+            # The account is saved. If the queue is down, the payouts stay
+            # pending and the reconciliation sweeper (next step) picks them up.
+            logger.exception("Could not queue waiting payouts for merchant %s", request.user.id)
+        return Response(PayoutAccountSerializer(account).data)

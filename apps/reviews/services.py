@@ -8,6 +8,7 @@ from apps.reviews.exceptions import (
     SelfReviewError,
 )
 from apps.reviews.models import Review
+TEST_BANK = "001"  # Paystack's test bank code, for development only
 
 
 def create_review(buyer, order_item_id, rating, comment):

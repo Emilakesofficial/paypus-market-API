@@ -18,6 +18,10 @@ from apps.orders.exceptions import (
     OrderNotConfirmableError
 )
 from apps.invoices.tasks import generate_invoice
+from apps.payment.payouts import create_payouts_for_order
+from apps.payment.tasks import send_payout
+
+
 expires_at = timezone.now() + timedelta(minutes=30)
 
 def reserve_stock(product_id, quantity):
@@ -96,15 +100,14 @@ def ship_order_items(order_id, merchant):
     order.refresh_from_db()
     return order, shipped_count
 
+@transaction.atomic
 def confirm_delivery(order_id, buyer):
     # Scoped to the buyer, so anyone else gets the same "not found"
     # as a nonexistent order.
     if not Order.objects.filter(id=order_id, buyer=buyer).exists():
         raise OrderNotFoundError()
 
-    # Conditional update, same pattern as every other transition: only
-    # moves to completed if the order is currently shipped. A double-click
-    # or a repeated request updates zero rows instead of re-processing.
+    # Conditional update: only moves to completed if currently shipped.
     updated = Order.objects.filter(
         id=order_id, buyer=buyer, status="shipped"
     ).update(status="completed")
@@ -112,8 +115,12 @@ def confirm_delivery(order_id, buyer):
     order = Order.objects.get(id=order_id)
     if not updated:
         raise OrderNotConfirmableError(order.status)
-    
-    # Queue only after the status change is committed, so the worker can't
-    # pick the task up before the order is visibly "completed".
-    transaction.on_commit(lambda: generate_invoice.delay(order_id))
+
+    payout_ids = create_payouts_for_order(order_id)
+    for payout_id in payout_ids:
+        # on_commit runs only if the whole transaction succeeds, so a payout
+        # is never sent for an order whose completion got rolled back.
+        # `pid=payout_id` pins this loop's value: without it, every lambda
+        # would see the last payout_id by the time they run.
+        transaction.on_commit(lambda pid=payout_id: send_payout.delay(pid))
     return order
